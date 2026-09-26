@@ -1,0 +1,124 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'NovaRAG - RDS PostgreSQL with pgvector'
+
+Parameters:
+  DBInstanceIdentifier:
+    Type: String
+    Default: novarag-postgres-1767716929
+    Description: RDS instance identifier
+  DBName:
+    Type: String
+    Default: novaragdb
+    Description: Database name
+  MasterUsername:
+    Type: String
+    Default: novaragadmin
+    Description: Master username
+  DBInstanceClass:
+    Type: String
+    Default: db.t3.micro
+    Description: Database instance class
+  AllocatedStorage:
+    Type: String
+    Default: '20'
+    Description: Allocated storage size in GB
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC ID for the RDS instance
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Subnet IDs for RDS subnet group
+  SecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: Security group ID to allow RDS access from
+
+Resources:
+  # Random password generator
+  DBSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: novarag-rds-password-1767716929
+      GenerateSecretString:
+        SecretStringTemplate: '{"username": "novaragadmin"}'
+        GenerateStringKey: "password"
+        PasswordLength: 32
+        ExcludeCharacters: '"@/\'
+
+  # Security Group for RDS
+  RDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for NovaRAG RDS
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref SecurityGroupId
+      Tags:
+        - Key: Name
+          Value: nova-rag-rds-sg
+
+  # DB parameter group
+  DBParameterGroup:
+    Type: AWS::RDS::DBParameterGroup
+    Properties:
+      Description: Parameter group for NovaRAG
+      Family: postgres15
+
+  # DB subnet group
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnet group for NovaRAG RDS
+      SubnetIds: !Ref SubnetIds
+
+  # RDS PostgreSQL instance
+  DBInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceIdentifier: !Ref DBInstanceIdentifier
+      DBInstanceClass: !Ref DBInstanceClass
+      Engine: postgres
+      EngineVersion: '15.15'
+      AllocatedStorage: !Ref AllocatedStorage
+      StorageType: gp2
+      StorageEncrypted: true
+      DBName: !Ref DBName
+      MasterUsername: !Ref MasterUsername
+      MasterUserPassword: !Join ['', ['{{resolve:secretsmanager:', !Ref DBSecret, ':SecretString:password}}']]
+      DBParameterGroupName: !Ref DBParameterGroup
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VPCSecurityGroups: [!Ref RDSSecurityGroup]
+      BackupRetentionPeriod: 7
+      PubliclyAccessible: true
+      Tags:
+        - Key: Name
+          Value: NovaRAG
+        - Key: Application
+          Value: NovaRAG
+
+  # Secret attachment
+  DBSecretAttachment:
+    Type: AWS::SecretsManager::SecretTargetAttachment
+    Properties:
+      SecretId: !Ref DBSecret
+      TargetId: !Ref DBInstance
+      TargetType: AWS::RDS::DBInstance
+
+Outputs:
+  DBEndpoint:
+    Description: RDS instance endpoint
+    Value: !GetAtt DBInstance.Endpoint.Address
+  DBPort:
+    Description: Database port
+    Value: !GetAtt DBInstance.Endpoint.Port
+  DBName:
+    Description: Database name
+    Value: !Ref DBName
+  MasterUsername:
+    Description: Master username
+    Value: !Ref MasterUsername
+  DBSecretArn:
+    Description: Secret ARN for password
+    Value: !Ref DBSecret
