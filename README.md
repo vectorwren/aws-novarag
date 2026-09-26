@@ -22,7 +22,7 @@ A smarter RAG that chooses retrieval strategies instead of just semantic search:
 
 ```bash
 # 1. Clone and install
-git clone https://github.com/REDACTED/aws-novarag.git
+git clone https://github.com/vectorwren/aws-novarag.git
 cd aws-novarag
 pip install -r requirements.txt
 
